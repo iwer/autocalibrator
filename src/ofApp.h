@@ -20,7 +20,7 @@ class ofApp : public ofBaseApp{
 			, error_("Modell Error", .01, .001, .2)
 			, percent_("Inlier %", .99, .2, 1)
 			, resolution_("Resolution", .03, .005, .1)
-			, samples_("# Samples", 2500, 10, 5000)
+			, samples_("# Samples", 5000, 10, 10000)
 			, passMin_("Z Min", .01, .01, 8)
 			, passMax_("Z Max", 2.5, .01, 8)
 			, meanSamples_("Smoothing Frame", 1, 1, 60)

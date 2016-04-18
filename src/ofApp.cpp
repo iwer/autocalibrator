@@ -75,13 +75,14 @@ void ofApp::update()
 				Eigen::VectorXf s_param;
 
 				findSphere(cloud_wo_back, inliers, s_param);
-				auto sphere_r = s_param.w();
-				auto sphere_x = s_param.x();
-				auto sphere_y = s_param.y();
-				auto sphere_z = s_param.z();
 
-				if (inliers->indices.size() > 0)
+				if (inliers->indices.size() > 0 && s_param.size() == 4)
 				{
+					auto sphere_r = s_param.w();
+					auto sphere_x = s_param.x();
+					auto sphere_y = s_param.y();
+					auto sphere_z = s_param.z();
+
 					sphere_detected_[sensor->getId()] = true;
 
 					// get in- and outlier cloud
@@ -106,8 +107,8 @@ void ofApp::update()
 					meanZ_[sensor->getId()] = approxRollingAverage(meanZ_[sensor->getId()], sphere_z * 1000, meanSamples_);
 					detected_sphere_location_[sensor->getId()].set(meanX_[sensor->getId()], meanY_[sensor->getId()], meanZ_[sensor->getId()]);
 				}
-
-				else
+				// if no sphere was found
+				else 
 				{
 					sphere_detected_[sensor->getId()] = false;
 					// make ofMesh for displaying
@@ -119,6 +120,7 @@ void ofApp::update()
 					mesh_map_.insert(std::pair<int, ofMesh>(sensor->getId(), mesh));
 				}
 
+
 				// when tracking target has moved more than a cm in one of the directions
 				if (std::fabs(last_mean_pos_[sensor->getId()].x - meanX_[sensor->getId()]) >= 15
 					|| std::fabs(last_mean_pos_[sensor->getId()].y - meanY_[sensor->getId()]) >= 15
@@ -127,14 +129,13 @@ void ofApp::update()
 					take_snapshot = false;
 				}
 			}
+			// if tracking is disabled
 			else
 			{
 				sphere_detected_[sensor->getId()] = false;
 				// make ofMesh for displaying
 				ofMesh mesh;
-				auto c = cloudColors[sensor->getId()];
-				c.a = 64;
-				createOfMeshFromPoints(cloud_wo_back, c, mesh);
+				createOfMeshFromPoints(cloud_wo_back, mesh);
 				mesh_map_.erase(sensor->getId());
 				mesh_map_.insert(std::pair<int, ofMesh>(sensor->getId(), mesh));
 			}
@@ -200,7 +201,7 @@ void ofApp::draw()
 
 				ofPushMatrix();
 				ofPushStyle();
-				ofSetColor(255, 0, 0);
+				ofSetColor(cloudColors[sensor->getId()]);
 				ofTranslate(detected_sphere_location_[sensor->getId()]);
 				detected_sphere_[sensor->getId()].drawWireframe();
 				ofPopMatrix();
@@ -315,18 +316,21 @@ void ofApp::removeBackground(recon::CloudPtr src, recon::CloudPtr trgt)
 
 void ofApp::findSphere(recon::CloudPtr src, pcl::PointIndices::Ptr inliers, Eigen::VectorXf& sphereParam)
 {
-	sphere_model_.reset(new pcl::SampleConsensusModelSphere<recon::PointType>(src));
-	sphere_model_->setRadiusLimits(min_, max_);
-	pcl::RandomSampleConsensus<recon::PointType> ransac(sphere_model_);
+	if (src->size() > 0)
+	{
+		sphere_model_.reset(new pcl::SampleConsensusModelSphere<recon::PointType>(src));
+		sphere_model_->setRadiusLimits(min_, max_);
+		pcl::RandomSampleConsensus<recon::PointType> ransac(sphere_model_);
 
-	ransac.setDistanceThreshold(error_);
-	ransac.setMaxIterations(samples_);
-	ransac.setProbability(percent_);
-	ransac.computeModel();
+		ransac.setDistanceThreshold(error_);
+		ransac.setMaxIterations(samples_);
+		ransac.setProbability(percent_);
+		ransac.computeModel();
 
-	ransac.getInliers(inliers->indices);
+		ransac.getInliers(inliers->indices);
 
-	ransac.getModelCoefficients(sphereParam);
+		ransac.getModelCoefficients(sphereParam);
+	}
 }
 
 void ofApp::extractInOutliers(recon::CloudPtr src, pcl::PointIndices::Ptr inliers, recon::CloudPtr in_cloud, recon::CloudPtr out_cloud)
@@ -354,22 +358,24 @@ void ofApp::performICPTransformationEstimation()
 		{
 			auto cloud1 = calib_positions_[sensor1->getId()];
 			auto cloud2 = calib_positions_[sensor2->getId()];
+			if (cloud1->size() >= 3 && cloud2->size() >= 3)
+			{
+				pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
+				icp.setInputCloud(cloud2);
+				icp.setInputTarget(cloud1);
+				icp.setMaxCorrespondenceDistance(1000);
+				icp.setMaximumIterations(100);
+				pcl::PointCloud<pcl::PointXYZ> cloud_reg;
+				icp.align(cloud_reg);
 
-			pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
-			icp.setInputCloud(cloud2);
-			icp.setInputTarget(cloud1);
-			icp.setMaxCorrespondenceDistance(1000);
-			icp.setMaximumIterations(100);
-			pcl::PointCloud<pcl::PointXYZ> cloud_reg;
-			icp.align(cloud_reg);
 
+				auto trans = Eigen::Affine3f(icp.getFinalTransformation());
+				Eigen::Vector4f t(trans.translation().x() / 1000, trans.translation().y() / 1000, trans.translation().z() / 1000, 0);
+				Eigen::Quaternionf r = Eigen::Quaternionf(trans.rotation());
+				recon::CameraExtrinsics::Ptr ext(new recon::CameraExtrinsics(t, r));
 
-			auto trans = Eigen::Affine3f(icp.getFinalTransformation());
-			Eigen::Vector4f t(trans.translation().x() / 1000, trans.translation().y() / 1000, trans.translation().z() / 1000, 0);
-			Eigen::Quaternionf r = Eigen::Quaternionf(trans.rotation());
-			recon::CameraExtrinsics::Ptr ext(new recon::CameraExtrinsics(t, r));
-
-			sensor2->setDepthExtrinsics(ext);
+				sensor2->setDepthExtrinsics(ext);
+			}
 		}
 	}
 }
