@@ -25,6 +25,7 @@ class ofApp : public ofBaseApp{
 			, passMax_("Z Max", 2.5, .01, 8)
 			, meanSamples_("Smoothing Frame", 1, 1, 60)
 			, background_("Background", 127, 0, 255)
+			, movementThreshold_("Movement threshold", 15, .1, 50)
 		{}
 
 		void setup();
@@ -53,6 +54,10 @@ class ofApp : public ofBaseApp{
 		
 		void performICPTransformationEstimation();
 		
+		void loadCalibrationFromFile();
+		void saveCalibrationToFile();
+
+		ofSoundPlayer player_;
 
 		ofEasyCam cam_;
 
@@ -94,7 +99,8 @@ class ofApp : public ofBaseApp{
 		ofParameter<float> passMin_;
 		ofParameter<float> passMax_;
 		ofParameter<int> meanSamples_;
-		
+		ofParameter<float> movementThreshold_;
+
 		ofxPanel ui_;
 		ofxFloatSlider bgSl_;
 		ofxFloatSlider minSl_;
@@ -107,6 +113,9 @@ class ofApp : public ofBaseApp{
 		ofxFloatSlider passMinSl_;
 		ofxFloatSlider passMaxSl_;
 		ofxIntSlider meanSampleSl_;
+		ofxFloatSlider movementThresholdSl_;
 		ofxButton calibResetBtn_;
 		ofxButton performEstimBtn_;
+		ofxButton saveCalibrationBtn_;
+		ofxButton loadCalibrationBtn_;
 };

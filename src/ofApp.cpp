@@ -15,7 +15,7 @@ void ofApp::setup()
 	cloudColors[2].set(0, 0, 255);
 	cloudColors[3].set(255, 255, 0);
 
-	// sensor setup
+	// SENSORS ##############
 	recon::SensorFactory sensorFac;
 
 	auto nSensors = sensorFac.checkConnectedDevices(true);
@@ -26,15 +26,15 @@ void ofApp::setup()
 		calib_positions_[sensor_list_.back()->getId()] = boost::make_shared<pcl::PointCloud<pcl::PointXYZ>>(pcl::PointCloud<pcl::PointXYZ>());
 	}
 
-	// ui setup
-	calibResetBtn_.addListener(this, &ofApp::reset_calibration);
-	performEstimBtn_.addListener(this, &ofApp::performICPTransformationEstimation);
-
+	// UI ############
 	ui_.setup();
 	ui_.add(bgSl_.setup(background_));
+	
 	ui_.add(resolutionSl_.setup(resolution_));
+	
 	ui_.add(passMinSl_.setup(passMin_));
 	ui_.add(passMaxSl_.setup(passMax_));
+	
 	ui_.add(enableTrackingBtn_.setup(trackingEnabled_));
 	ui_.add(minSl_.setup(min_));
 	ui_.add(maxSl_.setup(max_));
@@ -42,11 +42,24 @@ void ofApp::setup()
 	ui_.add(errorSl_.setup(error_));
 	ui_.add(percentSl_.setup(percent_));
 	ui_.add(meanSampleSl_.setup(meanSamples_));
+	ui_.add(movementThresholdSl_.setup(movementThreshold_));
+
+	calibResetBtn_.addListener(this, &ofApp::reset_calibration);
+	performEstimBtn_.addListener(this, &ofApp::performICPTransformationEstimation);
 	ui_.add(calibResetBtn_.setup("Reset Calibration"));
 	ui_.add(performEstimBtn_.setup("Perform Calibration"));
+	
+	saveCalibrationBtn_.addListener(this, &ofApp::saveCalibrationToFile);
+	loadCalibrationBtn_.addListener(this, &ofApp::loadCalibrationFromFile);
+	ui_.add(saveCalibrationBtn_.setup("Save calibration"));
+	ui_.add(loadCalibrationBtn_.setup("Load calibration"));
+
+	// CAMERA ##############
 
 	cam_.rotate(180, 1, 0, 0);
 	cam_.setFarClip(100000);
+
+	player_.load("click.mp3");
 }
 
 //--------------------------------------------------------------
@@ -89,26 +102,26 @@ void ofApp::update()
 					recon::CloudPtr in_cloud(new recon::Cloud());
 					recon::CloudPtr out_cloud(new recon::Cloud());
 					extractInOutliers(cloud_wo_back, inliers, in_cloud, out_cloud);
+					// inliers mesh to draw
 					createOfMeshFromPoints(in_cloud, ofColor(0, 255, 0, 255), inliers_mesh_[sensor->getId()]);
 					auto c = cloudColors[sensor->getId()];
 					c.a = 64;
+					// outliers mesh to draw
 					createOfMeshFromPoints(out_cloud, c, mesh_map_[sensor->getId()]);
 
 					// calculate mean radius of calib target
 					meanR_[sensor->getId()] = approxRollingAverage(meanR_[sensor->getId()], sphere_r * 1000, meanSamples_);
 					detected_sphere_[sensor->getId()].setRadius(meanR_[sensor->getId()]);
 
-					// remember last mean position
-					last_mean_pos_[sensor->getId()] = ofVec3f(meanX_[sensor->getId()], meanY_[sensor->getId()], meanZ_[sensor->getId()]);
-
 					// calculate new mean position
+					last_mean_pos_[sensor->getId()] = ofVec3f(meanX_[sensor->getId()], meanY_[sensor->getId()], meanZ_[sensor->getId()]);
 					meanX_[sensor->getId()] = approxRollingAverage(meanX_[sensor->getId()], sphere_x * 1000, meanSamples_);
 					meanY_[sensor->getId()] = approxRollingAverage(meanY_[sensor->getId()], sphere_y * 1000, meanSamples_);
 					meanZ_[sensor->getId()] = approxRollingAverage(meanZ_[sensor->getId()], sphere_z * 1000, meanSamples_);
 					detected_sphere_location_[sensor->getId()].set(meanX_[sensor->getId()], meanY_[sensor->getId()], meanZ_[sensor->getId()]);
 				}
 				// if no sphere was found
-				else 
+				else
 				{
 					sphere_detected_[sensor->getId()] = false;
 					// make ofMesh for displaying
@@ -122,9 +135,9 @@ void ofApp::update()
 
 
 				// when tracking target has moved more than a cm in one of the directions
-				if (std::fabs(last_mean_pos_[sensor->getId()].x - meanX_[sensor->getId()]) >= 15
-					|| std::fabs(last_mean_pos_[sensor->getId()].y - meanY_[sensor->getId()]) >= 15
-					|| std::fabs(last_mean_pos_[sensor->getId()].z - meanZ_[sensor->getId()]) >= 15)
+				if (std::fabs(last_mean_pos_[sensor->getId()].x - meanX_[sensor->getId()]) >= movementThreshold_
+					|| std::fabs(last_mean_pos_[sensor->getId()].y - meanY_[sensor->getId()]) >= movementThreshold_
+					|| std::fabs(last_mean_pos_[sensor->getId()].z - meanZ_[sensor->getId()]) >= movementThreshold_)
 				{
 					take_snapshot = false;
 				}
@@ -161,6 +174,8 @@ void ofApp::update()
 				last_snap_ = std::chrono::steady_clock::now();
 				performICPTransformationEstimation();
 			}
+
+			player_.play();
 		}
 	}
 	else
@@ -352,6 +367,7 @@ void ofApp::performICPTransformationEstimation()
 	std::list<recon::AbstractSensor::Ptr>::iterator ref = sensor_list_.begin();
 	for (it = sensor_list_.begin(); it != sensor_list_.end(); ++it)
 	{
+		// estimate transformation from sensor2 to sensor1
 		auto sensor1 = *ref;
 		auto sensor2 = *it;
 		if (sensor1 != sensor2)
@@ -380,3 +396,21 @@ void ofApp::performICPTransformationEstimation()
 	}
 }
 
+void ofApp::loadCalibrationFromFile()
+{
+	SensorCalibrationSettings set;
+	for (auto& s : sensor_list_)
+	{
+		set.loadCalibration(s, s->getId());
+	}
+}
+
+void ofApp::saveCalibrationToFile()
+{
+	SensorCalibrationSettings set;
+
+	for (auto& s : sensor_list_)
+	{
+		set.saveCalibration(s, s->getId());
+	}
+}
