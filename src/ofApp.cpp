@@ -4,6 +4,7 @@
 #include <pcl/filters/passthrough.h>
 #include <pcl/registration/icp.h>
 #include <pcl/registration/ia_ransac.h>
+#include <common/common.h>
 
 //--------------------------------------------------------------
 void ofApp::setup()
@@ -75,11 +76,11 @@ void ofApp::update()
 		{
 			// downsample cloud for searching sphere
 			recon::CloudPtr cloud_downsampled(new recon::Cloud());
-			downsample(cloud, cloud_downsampled);
+			downsample(cloud, cloud_downsampled, resolution_);
 
 			// remove background
 			recon::CloudPtr cloud_wo_back(new recon::Cloud());
-			removeBackground(cloud_downsampled, cloud_wo_back);
+			removeBackground(cloud_downsampled, cloud_wo_back, passMin_, passMax_);
 
 			// find sphere
 			pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
@@ -304,31 +305,6 @@ void ofApp::reset_calibration()
 	}
 }
 
-float ofApp::approxRollingAverage(float avg, float new_sample, int window)
-{
-	avg -= avg / window;
-	avg += new_sample / window;
-
-	return avg;
-}
-
-void ofApp::downsample(recon::CloudConstPtr src, recon::CloudPtr trgt)
-{
-	pcl::VoxelGrid<recon::PointType> sor;
-	sor.setInputCloud(src);
-	sor.setLeafSize(resolution_, resolution_, resolution_);
-	sor.filter(*trgt);
-}
-
-void ofApp::removeBackground(recon::CloudPtr src, recon::CloudPtr trgt)
-{
-	pcl::PassThrough<recon::PointType> pass;
-	pass.setFilterFieldName("z");
-	pass.setFilterLimits(passMin_, passMax_);
-	pass.setInputCloud(src);
-	pass.filter(*trgt);
-}
-
 void ofApp::findSphere(recon::CloudPtr src, pcl::PointIndices::Ptr inliers, Eigen::VectorXf& sphereParam)
 {
 	if (src->size() > 0)
@@ -346,18 +322,6 @@ void ofApp::findSphere(recon::CloudPtr src, pcl::PointIndices::Ptr inliers, Eige
 
 		ransac.getModelCoefficients(sphereParam);
 	}
-}
-
-void ofApp::extractInOutliers(recon::CloudPtr src, pcl::PointIndices::Ptr inliers, recon::CloudPtr in_cloud, recon::CloudPtr out_cloud)
-{
-	pcl::ExtractIndices<recon::PointType> extract;
-	extract.setInputCloud(src);
-	extract.setIndices(inliers);
-	extract.setNegative(false);
-	extract.filter(*in_cloud);
-
-	extract.setNegative(true);
-	extract.filter(*out_cloud);
 }
 
 void ofApp::performICPTransformationEstimation()
