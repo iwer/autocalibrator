@@ -5,6 +5,7 @@
 #include <pcl/registration/icp.h>
 #include <pcl/registration/ia_ransac.h>
 #include <common/common.h>
+#include <pcl/common/time.h>
 
 //--------------------------------------------------------------
 void ofApp::setup()
@@ -30,12 +31,12 @@ void ofApp::setup()
 	// UI ############
 	ui_.setup();
 	ui_.add(bgSl_.setup(background_));
-	
+
 	ui_.add(resolutionSl_.setup(resolution_));
-	
+
 	ui_.add(passMinSl_.setup(passMin_));
 	ui_.add(passMaxSl_.setup(passMax_));
-	
+
 	ui_.add(enableTrackingBtn_.setup(trackingEnabled_));
 	ui_.add(minSl_.setup(min_));
 	ui_.add(maxSl_.setup(max_));
@@ -49,7 +50,7 @@ void ofApp::setup()
 	performEstimBtn_.addListener(this, &ofApp::performICPTransformationEstimation);
 	ui_.add(calibResetBtn_.setup("Reset Calibration"));
 	ui_.add(performEstimBtn_.setup("Perform Calibration"));
-	
+
 	saveCalibrationBtn_.addListener(this, &ofApp::saveCalibrationToFile);
 	loadCalibrationBtn_.addListener(this, &ofApp::loadCalibrationFromFile);
 	ui_.add(saveCalibrationBtn_.setup("Save calibration"));
@@ -80,7 +81,7 @@ void ofApp::update()
 
 			// remove background
 			recon::CloudPtr cloud_wo_back(new recon::Cloud());
-			removeBackground(cloud_downsampled, cloud_wo_back, passMin_, passMax_);
+			removeBackground(cloud_downsampled, cloud_wo_back, passMin_, passMax_, false);
 
 			// find sphere
 			pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
@@ -311,6 +312,7 @@ void ofApp::findSphere(recon::CloudPtr src, pcl::PointIndices::Ptr inliers, Eige
 	{
 		sphere_model_.reset(new pcl::SampleConsensusModelSphere<recon::PointType>(src));
 		sphere_model_->setRadiusLimits(min_, max_);
+
 		pcl::RandomSampleConsensus<recon::PointType> ransac(sphere_model_);
 
 		ransac.setDistanceThreshold(error_);
@@ -318,8 +320,10 @@ void ofApp::findSphere(recon::CloudPtr src, pcl::PointIndices::Ptr inliers, Eige
 		ransac.setProbability(percent_);
 		ransac.computeModel();
 
-		ransac.getInliers(inliers->indices);
 
+		// obtain results
+
+		ransac.getInliers(inliers->indices);
 		ransac.getModelCoefficients(sphereParam);
 	}
 }

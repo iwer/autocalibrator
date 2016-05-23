@@ -75,7 +75,7 @@ class ofApp : public ofBaseApp{
 		std::map<int, ofVec3f> detected_sphere_location_;
 		std::map<int, ofSpherePrimitive> detected_sphere_;
 
-		// calibration snapshots off sphere position
+		// calibration snapshots of sphere position
 		std::map<int, pcl::PointCloud<pcl::PointXYZ>::Ptr> calib_positions_;
 
 		// time variables for snapshot intervallometer
