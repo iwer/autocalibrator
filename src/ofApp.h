@@ -14,18 +14,20 @@ class ofApp : public ofBaseApp{
 
 	public:
 		ofApp()
-			: min_("Min Radius", .1, .01, 1)
-			, max_("Max Radius", .3, .1, 1)
+			: minR_("Min Radius", .1, .01, 1)
+			, maxR_("Max Radius", .3, .1, 1)
 			, trackingEnabled_("Enable Tracking", false)
 			, error_("Modell Error", .01, .001, .2)
 			, percent_("Inlier %", .99, .2, 1)
 			, resolution_("Resolution", .03, .005, .1)
-			, samples_("# Samples", 5000, 10, 10000)
+			, samples_("# Samples", 10000, 10, 50000)
 			, passMin_("Z Min", .01, .01, 8)
 			, passMax_("Z Max", 2.5, .01, 8)
-			, meanSamples_("Smoothing Frame", 1, 1, 60)
+			, meanSamples_("Smoothing Frame", 3, 1, 60)
 			, background_("Background", 127, 0, 255)
 			, movementThreshold_("Movement threshold", 15, .1, 50)
+			, icpDistanceThreshold_("Distance Threshold ", 1, .001, 3)
+			, icpIterations_("# Iterations", 100, 20, 1000)
 		{}
 
 		void setup();
@@ -85,22 +87,30 @@ class ofApp : public ofBaseApp{
 
 		// gui stuff
 		ofParameter<float> background_;
-		ofParameter<float> min_;
-		ofParameter<float> max_;
+		ofParameter<float> minR_;
+		ofParameter<float> maxR_;
+		
+		ofParameterGroup trackingParams_;
 		ofParameter<bool> trackingEnabled_;
+		ofParameter<int> samples_;
 		ofParameter<float> error_;
 		ofParameter<float> percent_;
-		ofParameter<float> resolution_;
-		ofParameter<int> samples_;
-		ofParameter<float> passMin_;
-		ofParameter<float> passMax_;
 		ofParameter<int> meanSamples_;
 		ofParameter<float> movementThreshold_;
 
+		ofParameterGroup filteringParams_;
+		ofParameter<float> resolution_;
+		ofParameter<float> passMin_;
+		ofParameter<float> passMax_;
+
+		ofParameterGroup icpParams_;
+		ofParameter<float> icpDistanceThreshold_;
+		ofParameter<int> icpIterations_;
+
 		ofxPanel ui_;
 		ofxFloatSlider bgSl_;
-		ofxFloatSlider minSl_;
-		ofxFloatSlider maxSl_;
+		ofxFloatSlider minRSl_;
+		ofxFloatSlider maxRSl_;
 		ofxToggle enableTrackingBtn_;
 		ofxFloatSlider errorSl_;
 		ofxFloatSlider percentSl_;

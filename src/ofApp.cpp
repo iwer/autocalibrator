@@ -32,20 +32,6 @@ void ofApp::setup()
 	ui_.setup();
 	ui_.add(bgSl_.setup(background_));
 
-	ui_.add(resolutionSl_.setup(resolution_));
-
-	ui_.add(passMinSl_.setup(passMin_));
-	ui_.add(passMaxSl_.setup(passMax_));
-
-	ui_.add(enableTrackingBtn_.setup(trackingEnabled_));
-	ui_.add(minSl_.setup(min_));
-	ui_.add(maxSl_.setup(max_));
-	ui_.add(samplesSl_.setup(samples_));
-	ui_.add(errorSl_.setup(error_));
-	ui_.add(percentSl_.setup(percent_));
-	ui_.add(meanSampleSl_.setup(meanSamples_));
-	ui_.add(movementThresholdSl_.setup(movementThreshold_));
-
 	calibResetBtn_.addListener(this, &ofApp::reset_calibration);
 	performEstimBtn_.addListener(this, &ofApp::performICPTransformationEstimation);
 	ui_.add(calibResetBtn_.setup("Reset Calibration"));
@@ -56,9 +42,33 @@ void ofApp::setup()
 	ui_.add(saveCalibrationBtn_.setup("Save calibration"));
 	ui_.add(loadCalibrationBtn_.setup("Load calibration"));
 
+	filteringParams_.setName("Filtering Parameters");
+	filteringParams_.add(resolution_);
+	filteringParams_.add(passMin_);
+	filteringParams_.add(passMax_);
+	ui_.add(filteringParams_);
+
+	trackingParams_.setName("Tracking Parameters");
+	trackingParams_.add(trackingEnabled_);
+	trackingParams_.add(minR_);
+	trackingParams_.add(maxR_);
+	trackingParams_.add(samples_);
+	trackingParams_.add(error_);
+	trackingParams_.add(percent_);
+	trackingParams_.add(meanSamples_);
+	trackingParams_.add(movementThreshold_);
+	ui_.add(trackingParams_);
+
+	icpParams_.setName("ICP Parameters");
+	icpParams_.add(icpDistanceThreshold_);
+	icpParams_.add(icpIterations_);
+	ui_.add(icpParams_);
+
+
+
 	// CAMERA ##############
 
-	cam_.rotate(180, 1, 0, 0);
+	cam_.rotate(180, 0, 1, 0);
 	cam_.setFarClip(100000);
 
 	player_.load("click.mp3");
@@ -311,7 +321,7 @@ void ofApp::findSphere(recon::CloudPtr src, pcl::PointIndices::Ptr inliers, Eige
 	if (src->size() > 0)
 	{
 		sphere_model_.reset(new pcl::SampleConsensusModelSphere<recon::PointType>(src));
-		sphere_model_->setRadiusLimits(min_, max_);
+		sphere_model_->setRadiusLimits(minR_, maxR_);
 
 		pcl::RandomSampleConsensus<recon::PointType> ransac(sphere_model_);
 
@@ -347,8 +357,8 @@ void ofApp::performICPTransformationEstimation()
 				pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
 				icp.setInputCloud(cloud2);
 				icp.setInputTarget(cloud1);
-				icp.setMaxCorrespondenceDistance(1000);
-				icp.setMaximumIterations(100);
+				icp.setMaxCorrespondenceDistance(icpDistanceThreshold_ * 1000);
+				icp.setMaximumIterations(icpIterations_);
 				pcl::PointCloud<pcl::PointXYZ> cloud_reg;
 				icp.align(cloud_reg);
 
