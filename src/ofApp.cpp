@@ -70,6 +70,8 @@ void ofApp::setup()
 
 	cam_.rotate(180, 0, 1, 0);
 	cam_.setFarClip(100000);
+	cam_.enableMouseInput();
+	cam_.disableMouseMiddleButton();
 
 	player_.load("click.mp3");
 }
