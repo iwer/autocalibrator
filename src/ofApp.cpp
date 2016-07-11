@@ -3,13 +3,19 @@
 #include <pcl/filters/extract_indices.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/registration/icp.h>
+#include <pcl/registration/icp_nl.h>
+#include <pcl/features/fpfh.h>
 #include <pcl/registration/ia_ransac.h>
 #include <common/common.h>
 #include <pcl/common/time.h>
+#include <pcl/features/normal_3d.h>
 
 //--------------------------------------------------------------
 void ofApp::setup()
 {
+	font.load("verdana.ttf", 28);
+
+
 	std::chrono::seconds five_sec(3);
 	static_time_to_snapshot_ = five_sec;
 	cloudColors[0].set(255, 0, 0);
@@ -30,6 +36,10 @@ void ofApp::setup()
 
 	// UI ############
 	ui_.setup();
+	ui_.setSize(300, ofGetHeight());
+	ui_.setDefaultWidth(300);
+	ui_.setWidthElements(300);
+
 	ui_.add(bgSl_.setup(background_));
 
 	calibResetBtn_.addListener(this, &ofApp::reset_calibration);
@@ -41,6 +51,16 @@ void ofApp::setup()
 	loadCalibrationBtn_.addListener(this, &ofApp::loadCalibrationFromFile);
 	ui_.add(saveCalibrationBtn_.setup("Save calibration"));
 	ui_.add(loadCalibrationBtn_.setup("Load calibration"));
+
+	globalPositionParams_.setName("Global Position Parameters");
+	globalPositionParams_.add(globalCalibration_);
+	globalPositionParams_.add(xTrans_);
+	globalPositionParams_.add(yTrans_);
+	globalPositionParams_.add(zTrans_);
+	globalPositionParams_.add(xRot_);
+	globalPositionParams_.add(yRot_);
+	globalPositionParams_.add(zRot_);
+	ui_.add(globalPositionParams_);
 
 	filteringParams_.setName("Filtering Parameters");
 	filteringParams_.add(resolution_);
@@ -59,12 +79,16 @@ void ofApp::setup()
 	trackingParams_.add(movementThreshold_);
 	ui_.add(trackingParams_);
 
+	iaParams_.setName("SAC-IA Parameters");
+	iaParams_.add(iaMinSampleDistance__);
+	iaParams_.add(iaMaxCorrespondenceDistance_);
+	iaParams_.add(iaIterations_);
+	ui_.add(iaParams_);
+
 	icpParams_.setName("ICP Parameters");
 	icpParams_.add(icpDistanceThreshold_);
 	icpParams_.add(icpIterations_);
 	ui_.add(icpParams_);
-
-
 
 	// CAMERA ##############
 
@@ -79,11 +103,24 @@ void ofApp::setup()
 //--------------------------------------------------------------
 void ofApp::update()
 {
+	if (globalCalibration_) {
+		// update calibration of first sensor, the one all others align to, for global positioning
+		ofVec3f x(1, 0, 0), y(0, 1, 0), z(0, 0, 1);
+		ofQuaternion rquat;
+		rquat.makeRotate(xRot_, x, yRot_, y, zRot_, z);
+		auto pos = ofVec3f(xTrans_ * 1000, yTrans_ * 1000, zTrans_ * 1000);
+		Eigen::Vector4f translation;
+		toEigenVector4f(pos, translation);
+		auto rotation = toEigenQuaternionf(rquat);
+		recon::CameraExtrinsics::Ptr ext(new recon::CameraExtrinsics(translation, rotation));
+		sensor_list_.front()->setDepthExtrinsics(ext);
+	}
+
 	bool take_snapshot = true;
 	// for each sensor
 	for (auto& sensor : sensor_list_)
 	{
-		// get current point cloud
+		// get current point cloud, points are in camera space (x left, y up, z back)
 		auto cloud = sensor->getCloudSource()->getOutputCloud();
 		if (cloud != nullptr)
 		{
@@ -95,7 +132,7 @@ void ofApp::update()
 			recon::CloudPtr cloud_wo_back(new recon::Cloud());
 			removeBackground(cloud_downsampled, cloud_wo_back, passMin_, passMax_, false);
 
-			// find sphere
+			// find sphere, still in camera space
 			pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
 			if (trackingEnabled_)
 			{
@@ -127,7 +164,7 @@ void ofApp::update()
 					meanR_[sensor->getId()] = approxRollingAverage(meanR_[sensor->getId()], sphere_r * 1000, meanSamples_);
 					detected_sphere_[sensor->getId()].setRadius(meanR_[sensor->getId()]);
 
-					// calculate new mean position
+					// calculate new mean position (in camera space)
 					last_mean_pos_[sensor->getId()] = ofVec3f(meanX_[sensor->getId()], meanY_[sensor->getId()], meanZ_[sensor->getId()]);
 					meanX_[sensor->getId()] = approxRollingAverage(meanX_[sensor->getId()], sphere_x * 1000, meanSamples_);
 					meanY_[sensor->getId()] = approxRollingAverage(meanY_[sensor->getId()], sphere_y * 1000, meanSamples_);
@@ -206,8 +243,18 @@ void ofApp::draw()
 
 	ofDrawBitmapString("fps: " + std::to_string(ofGetFrameRate()) + " calpos: " + std::to_string(calib_positions_[0]->size()), 10, 10);
 
+	font.drawString(icpFitnessScore_, ofGetWidth() - 200, 50);
+
+
 	cam_.begin();
 	ofEnableDepthTest();
+
+	if(globalCalibration_)
+	{
+		ofDrawAxis(100);
+
+	}
+
 	for (auto& sensor : sensor_list_)
 	{
 		ofPushMatrix();
@@ -236,14 +283,13 @@ void ofApp::draw()
 				ofPopMatrix();
 				ofPopStyle();
 			}
-
-			for (auto& p : *calib_positions_[sensor->getId()])
-			{
-				ofPushStyle();
-				ofSetColor(cloudColors[sensor->getId()]);
-				ofDrawBox(p.x, p.y, p.z, 30);
-				ofPopStyle();
-			}
+		}
+		for (auto& p : *calib_positions_[sensor->getId()])
+		{
+			ofPushStyle();
+			ofSetColor(cloudColors[sensor->getId()]);
+			ofDrawBox(p.x, p.y, p.z, 30);
+			ofPopStyle();
 		}
 		ofPopMatrix();
 	}
@@ -258,6 +304,7 @@ void ofApp::draw()
 //--------------------------------------------------------------
 void ofApp::keyPressed(int key)
 {
+
 }
 
 //--------------------------------------------------------------
@@ -340,34 +387,88 @@ void ofApp::findSphere(recon::CloudPtr src, pcl::PointIndices::Ptr inliers, Eige
 	}
 }
 
+void ofApp::computeFeatures(pcl::PointCloud<pcl::PointXYZ>::Ptr refCloud, pcl::PointCloud<pcl::FPFHSignature33>::Ptr refFeatures)
+{
+	pcl::PointCloud<pcl::Normal>::Ptr refNormals(new pcl::PointCloud<pcl::Normal>());
+	pcl::NormalEstimation<pcl::PointXYZ, pcl::Normal> norm_est;
+	pcl::search::KdTree<pcl::PointXYZ>::Ptr search_method(new pcl::search::KdTree<pcl::PointXYZ>());
+	norm_est.setInputCloud(refCloud);
+	norm_est.setSearchMethod(search_method);
+	norm_est.setRadiusSearch(.5);
+	norm_est.compute(*refNormals);
+
+	pcl::FPFHEstimation<pcl::PointXYZ, pcl::Normal, pcl::FPFHSignature33> fpfh_est;
+	fpfh_est.setInputCloud(refCloud);
+	fpfh_est.setInputNormals(refNormals);
+	fpfh_est.setSearchMethod(search_method);
+	fpfh_est.setRadiusSearch(1);
+	fpfh_est.compute(*refFeatures);
+}
+
 void ofApp::performICPTransformationEstimation()
 {
 	// perform icp on calib_position pointclouds
 	std::list<recon::AbstractSensor::Ptr>::iterator it;
 	std::list<recon::AbstractSensor::Ptr>::iterator ref = sensor_list_.begin();
+	
+	// transform points of first sensor to global position
+	auto sensor1 = *ref;
+	auto refCloud = calib_positions_[sensor1->getId()];
+	pcl::PointCloud<pcl::PointXYZ>::Ptr refCloudGlobalTransformed(new pcl::PointCloud<pcl::PointXYZ>());
+	
+
+	// this point cloud is in of space, so translation has to be scaled up
+	auto trnsrfrm = sensor1->getDepthExtrinsics()->getTransformation();
+	trnsrfrm.translation() *= 1000;
+	pcl::transformPointCloud(*refCloud, *refCloudGlobalTransformed, trnsrfrm);
+
+	pcl::PointCloud<pcl::FPFHSignature33>::Ptr refFeatures(new pcl::PointCloud<pcl::FPFHSignature33>());
+	computeFeatures(refCloudGlobalTransformed, refFeatures);
+
+
 	for (it = sensor_list_.begin(); it != sensor_list_.end(); ++it)
 	{
-		// estimate transformation from sensor2 to sensor1
-		auto sensor1 = *ref;
+		// estimate transformation from each sensor to sensor1
 		auto sensor2 = *it;
 		if (sensor1 != sensor2)
 		{
-			auto cloud1 = calib_positions_[sensor1->getId()];
 			auto cloud2 = calib_positions_[sensor2->getId()];
-			if (cloud1->size() >= 3 && cloud2->size() >= 3)
+			if (refCloudGlobalTransformed->size() >= 3 && cloud2->size() >= 3)
 			{
-				pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
-				icp.setInputCloud(cloud2);
-				icp.setInputTarget(cloud1);
+				pcl::PointCloud<pcl::FPFHSignature33>::Ptr cloud2Features(new pcl::PointCloud<pcl::FPFHSignature33>());
+				computeFeatures(cloud2, cloud2Features);
+
+				pcl::SampleConsensusInitialAlignment<pcl::PointXYZ, pcl::PointXYZ, pcl::FPFHSignature33> sac_ia;
+				sac_ia.setMinSampleDistance(iaMinSampleDistance__);
+				sac_ia.setMaxCorrespondenceDistance(iaMaxCorrespondenceDistance_ * 1000);
+				sac_ia.setMaximumIterations(iaIterations_);
+				sac_ia.setInputTarget(refCloudGlobalTransformed);
+				sac_ia.setTargetFeatures(refFeatures);
+				sac_ia.setInputCloud(cloud2);
+				sac_ia.setSourceFeatures(cloud2Features);
+
+				pcl::PointCloud<pcl::PointXYZ>::Ptr registration_output(new pcl::PointCloud<pcl::PointXYZ>());
+				sac_ia.align(*registration_output);
+				auto ia_alignment = sac_ia.getFinalTransformation();
+
+				pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ, float> icp;
+				icp.setInputCloud(registration_output);
+				icp.setInputTarget(refCloudGlobalTransformed);
 				icp.setMaxCorrespondenceDistance(icpDistanceThreshold_ * 1000);
 				icp.setMaximumIterations(icpIterations_);
+				//icp.setTransformationEpsilon(1e-6);
+				//icp.setEuclideanFitnessEpsilon(1);
+
 				pcl::PointCloud<pcl::PointXYZ> cloud_reg;
 				icp.align(cloud_reg);
 
+				//std::cout << "ICP has converged:" << icp.hasConverged() << " score: " <<
+				//	icp.getFitnessScore() << std::endl;
+				icpFitnessScore_ = std::to_string(icp.getFitnessScore());
 
-				auto trans = Eigen::Affine3f(icp.getFinalTransformation());
-				Eigen::Vector4f t(trans.translation().x() / 1000, trans.translation().y() / 1000, trans.translation().z() / 1000, 0);
-				Eigen::Quaternionf r = Eigen::Quaternionf(trans.rotation());
+				auto transformation = Eigen::Affine3f(ia_alignment * icp.getFinalTransformation());
+				Eigen::Vector4f t(transformation.translation().x() / 1000, transformation.translation().y() / 1000, transformation.translation().z() / 1000, 0);
+				auto r = Eigen::Quaternionf(transformation.rotation());
 				recon::CameraExtrinsics::Ptr ext(new recon::CameraExtrinsics(t, r));
 
 				sensor2->setDepthExtrinsics(ext);

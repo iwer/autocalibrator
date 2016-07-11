@@ -17,6 +17,7 @@ class ofApp : public ofBaseApp{
 			: minR_("Min Radius", .1, .01, 1)
 			, maxR_("Max Radius", .3, .1, 1)
 			, trackingEnabled_("Enable Tracking", false)
+			, globalCalibration_("Global Calibration", true)
 			, error_("Modell Error", .01, .001, .2)
 			, percent_("Inlier %", .99, .2, 1)
 			, resolution_("Resolution", .03, .005, .1)
@@ -26,8 +27,17 @@ class ofApp : public ofBaseApp{
 			, meanSamples_("Smoothing Frame", 3, 1, 60)
 			, background_("Background", 127, 0, 255)
 			, movementThreshold_("Movement threshold", 15, .1, 50)
-			, icpDistanceThreshold_("Distance Threshold ", 1, .001, 3)
-			, icpIterations_("# Iterations", 100, 20, 1000)
+			, icpDistanceThreshold_("Distance Threshold ", 2, .001, 3)
+			, icpIterations_("# Iterations", 500, 20, 1000)
+			, iaMinSampleDistance__("Min Sample Distance", .05, .001, 1)
+			, iaMaxCorrespondenceDistance_("Max correspondence distance", 3, .1, 8)
+			, iaIterations_("Max Iterations", 10000, 10, 50000)
+			, xTrans_("X Translation", 0, -5, 5)
+			, yTrans_("Y Translation", 0, -5, 5)
+			, zTrans_("Z Translation", 0, -5, 5)
+			, xRot_("X Rotation", 0, -180, 180)
+			, yRot_("Y Rotation", 0, -180, 180)
+			, zRot_("Z Rotation", 0, -180, 180)
 		{}
 
 		void setup();
@@ -49,7 +59,7 @@ class ofApp : public ofBaseApp{
 		
 		void reset_calibration();
 		void findSphere(recon::CloudPtr src, pcl::PointIndices::Ptr inliers, Eigen::VectorXf &sphereParam);
-		
+		void computeFeatures(pcl::PointCloud<pcl::PointXYZ>::Ptr refCloud, pcl::PointCloud<pcl::FPFHSignature33>::Ptr refFeatures);
 		void performICPTransformationEstimation();
 		
 		void loadCalibrationFromFile();
@@ -69,15 +79,16 @@ class ofApp : public ofBaseApp{
 		pcl::SampleConsensusModelSphere<recon::PointType>::Ptr sphere_model_;
 
 		std::map<int, bool> sphere_detected_;
+		// sphere coordinates in camera space of associated sensor
 		std::map<int, float> meanX_;
 		std::map<int, float> meanY_;
 		std::map<int, float> meanZ_;
 		std::map<int, float> meanR_;
-				std::map<int, ofVec3f> last_mean_pos_;
+		std::map<int, ofVec3f> last_mean_pos_;
 		std::map<int, ofVec3f> detected_sphere_location_;
 		std::map<int, ofSpherePrimitive> detected_sphere_;
 
-		// calibration snapshots of sphere position
+		// calibration snapshots of sphere position in camera space
 		std::map<int, pcl::PointCloud<pcl::PointXYZ>::Ptr> calib_positions_;
 
 		// time variables for snapshot intervallometer
@@ -86,10 +97,22 @@ class ofApp : public ofBaseApp{
 		std::chrono::time_point<std::chrono::steady_clock> last_snap_;
 
 		// gui stuff
+		ofTrueTypeFont font;
+		std::string icpFitnessScore_;
+
 		ofParameter<float> background_;
 		ofParameter<float> minR_;
 		ofParameter<float> maxR_;
 		
+		ofParameterGroup globalPositionParams_;
+		ofParameter<bool> globalCalibration_;
+		ofParameter<float> xTrans_;
+		ofParameter<float> yTrans_;
+		ofParameter<float> zTrans_;
+		ofParameter<float> xRot_;
+		ofParameter<float> yRot_;
+		ofParameter<float> zRot_;
+
 		ofParameterGroup trackingParams_;
 		ofParameter<bool> trackingEnabled_;
 		ofParameter<int> samples_;
@@ -103,23 +126,17 @@ class ofApp : public ofBaseApp{
 		ofParameter<float> passMin_;
 		ofParameter<float> passMax_;
 
+		ofParameterGroup iaParams_;
+		ofParameter<float> iaMinSampleDistance__;
+		ofParameter<float> iaMaxCorrespondenceDistance_;
+		ofParameter<int> iaIterations_;
+
 		ofParameterGroup icpParams_;
 		ofParameter<float> icpDistanceThreshold_;
 		ofParameter<int> icpIterations_;
 
 		ofxPanel ui_;
 		ofxFloatSlider bgSl_;
-		ofxFloatSlider minRSl_;
-		ofxFloatSlider maxRSl_;
-		ofxToggle enableTrackingBtn_;
-		ofxFloatSlider errorSl_;
-		ofxFloatSlider percentSl_;
-		ofxFloatSlider resolutionSl_;
-		ofxIntSlider samplesSl_;
-		ofxFloatSlider passMinSl_;
-		ofxFloatSlider passMaxSl_;
-		ofxIntSlider meanSampleSl_;
-		ofxFloatSlider movementThresholdSl_;
 		ofxButton calibResetBtn_;
 		ofxButton performEstimBtn_;
 		ofxButton saveCalibrationBtn_;
