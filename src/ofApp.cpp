@@ -444,7 +444,8 @@ void ofApp::performICPTransformationEstimation()
 				sac_ia.setMaximumIterations(iaIterations_);
 				sac_ia.setInputTarget(refCloudGlobalTransformed);
 				sac_ia.setTargetFeatures(refFeatures);
-				sac_ia.setInputCloud(cloud2);
+				//sac_ia.setInputCloud(cloud2); deprecated
+				sac_ia.setInputSource(cloud2);
 				sac_ia.setSourceFeatures(cloud2Features);
 
 				pcl::PointCloud<pcl::PointXYZ>::Ptr registration_output(new pcl::PointCloud<pcl::PointXYZ>());
@@ -452,7 +453,8 @@ void ofApp::performICPTransformationEstimation()
 				auto ia_alignment = sac_ia.getFinalTransformation();
 
 				pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ, float> icp;
-				icp.setInputCloud(registration_output);
+				//icp.setInputCloud(registration_output);
+                icp.setInputSource(registration_output);
 				icp.setInputTarget(refCloudGlobalTransformed);
 				icp.setMaxCorrespondenceDistance(icpDistanceThreshold_ * 1000);
 				icp.setMaximumIterations(icpIterations_);

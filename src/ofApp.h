@@ -2,6 +2,9 @@
 
 #include "ofMain.h"
 #include "ofxGui.h"
+
+#undef Success
+#undef Status
 #include "recon/SensorFactory.h"
 #include "of-pcl-bridge/of-pcl-bridge.h"
 #include "recon/typedefs.h"
